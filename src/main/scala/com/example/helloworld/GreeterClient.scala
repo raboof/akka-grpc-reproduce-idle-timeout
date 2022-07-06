@@ -11,6 +11,9 @@ import akka.actor.typed.ActorSystem
 import akka.actor.typed.scaladsl.Behaviors
 import akka.grpc.GrpcClientSettings
 import akka.stream.scaladsl.Source
+import sun.jvm.hotspot.runtime.Threads
+
+import java.util.concurrent.TimeUnit
 
 //#import
 
@@ -21,7 +24,14 @@ object GreeterClient {
     implicit val sys: ActorSystem[_] = ActorSystem(Behaviors.empty, "GreeterClient")
     implicit val ec: ExecutionContext = sys.executionContext
 
-    val client = GreeterServiceClient(GrpcClientSettings.fromConfig("helloworld.GreeterService"))
+    val client = GreeterServiceClient(
+      GrpcClientSettings.fromConfig("helloworld.GreeterService")
+        .withChannelBuilderOverrides(cb => {
+          cb
+            .keepAliveTime(10, TimeUnit.SECONDS)
+            .keepAliveWithoutCalls(true)
+        })
+    )
 
     val names =
       if (args.isEmpty) List("Alice", "Bob")
@@ -33,6 +43,8 @@ object GreeterClient {
     if (args.nonEmpty)
       names.foreach(streamingBroadcast)
     //#client-request-reply
+
+    Thread.sleep(10000)
 
     def singleRequestReply(name: String): Unit = {
       println(s"Performing request: $name")
@@ -52,7 +64,7 @@ object GreeterClient {
 
       val requestStream: Source[HelloRequest, NotUsed] =
         Source
-          .tick(1.second, 1.second, "tick")
+          .tick(10.second, 10.second, "tick")
           .zipWithIndex
           .map { case (_, i) => i }
           .map(i => HelloRequest(s"$name-$i"))
@@ -72,6 +84,7 @@ object GreeterClient {
     //#client-stream
     //#client-request-reply
 
+    sys.terminate()
   }
 
 }
